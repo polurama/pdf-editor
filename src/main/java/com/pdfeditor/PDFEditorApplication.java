@@ -6,6 +6,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.input.KeyCode;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
@@ -26,12 +27,51 @@ import java.util.Arrays;
 import java.util.List;
 
 public class PDFEditorApplication extends Application {
+    private void showError(String title, String header, String content) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle(title);
+        alert.setHeaderText(header);
+        alert.setContentText(content);
+        alert.showAndWait();
+    }
+
+    private void addImageToPDF(PDDocument document, PDPageContentStream contentStream,
+            DraggableImage draggableImage) throws IOException {
+        Point2D position = draggableImage.getPosition();
+        PDImageXObject image = PDImageXObject.createFromFile(
+                draggableImage.getSourceFile().getAbsolutePath(), document);
+
+        // Convert JavaFX coordinates to PDF coordinates
+        float pdfY = PDRectangle.A4.getHeight() -
+                (float) position.getY() -
+                (float) draggableImage.getBoundsInParent().getHeight();
+
+        // Save the graphics state before applying transformations
+        contentStream.saveGraphicsState();
+
+        // Create and apply transformation matrix for position
+        Matrix transform = new Matrix();
+        transform.translate((float) position.getX(), pdfY);
+
+        contentStream.transform(transform);
+
+        // Draw the image at the transformed position
+        contentStream.drawImage(image, 0, 0,
+                (float) draggableImage.getBoundsInParent().getWidth(),
+                (float) draggableImage.getBoundsInParent().getHeight());
+
+        // Restore the graphics state
+        contentStream.restoreGraphicsState();
+    }
+
     private final Pane pageCanvas;
     private final BorderPane root;
     private final List<DraggableImage> images = new ArrayList<>();
 
-    private static final double IMAGE_SPACING = 10; // Space between images
-    private static final int IMAGES_PER_ROW = 4; // Number of images per row
+    private static final double IMAGE_SPACING = 10;
+    private static final int IMAGES_PER_ROW = 4;
+
+    private DraggableImage selectedImage = null;
 
     public PDFEditorApplication() {
         root = new BorderPane();
@@ -78,7 +118,7 @@ public class PDFEditorApplication extends Application {
         File file = fileChooser.showOpenDialog(root.getScene().getWindow());
         if (file != null) {
             addImageToCanvas(file);
-            arrangeImages(); // Reposition images after adding a new one
+            arrangeImages();
         }
     }
 
@@ -97,7 +137,7 @@ public class PDFEditorApplication extends Application {
                 for (File file : files) {
                     addImageToCanvas(file);
                 }
-                arrangeImages(); // Automatically arrange after loading multiple images
+                arrangeImages();
             }
         }
     }
@@ -105,6 +145,7 @@ public class PDFEditorApplication extends Application {
     private void addImageToCanvas(File file) {
         try {
             DraggableImage image = new DraggableImage(file);
+            image.setOnMouseClicked(event -> setSelectedImage(image));
             images.add(image);
             pageCanvas.getChildren().add(image);
         } catch (Exception e) {
@@ -112,6 +153,14 @@ public class PDFEditorApplication extends Application {
                     "Failed to add image: " + file.getName(),
                     e.getMessage());
         }
+    }
+
+    private void setSelectedImage(DraggableImage image) {
+        if (selectedImage != null) {
+            selectedImage.setStyle("");
+        }
+        selectedImage = image;
+        selectedImage.setStyle("-fx-effect: dropshadow(gaussian, red, 10, 0, 0, 0);");
     }
 
     private void arrangeImages() {
@@ -123,12 +172,12 @@ public class PDFEditorApplication extends Application {
             image.setTranslateX(x);
             image.setTranslateY(y);
 
-            x += image.getFitWidth() + IMAGE_SPACING; // Move to the right
+            x += image.getFitWidth() + IMAGE_SPACING;
 
             count++;
             if (count % IMAGES_PER_ROW == 0) {
-                x = IMAGE_SPACING; // Reset X to the beginning
-                y += 220; // Move to the next row (assumed average image height + margin)
+                x = IMAGE_SPACING;
+                y += 220;
             }
         }
     }
@@ -165,41 +214,18 @@ public class PDFEditorApplication extends Application {
         }
     }
 
-    private void addImageToPDF(PDDocument document, PDPageContentStream contentStream,
-            DraggableImage draggableImage) throws IOException {
-        Point2D position = draggableImage.getPosition();
-        PDImageXObject image = PDImageXObject.createFromFile(
-                draggableImage.getSourceFile().getAbsolutePath(), document);
-
-        float pdfY = PDRectangle.A4.getHeight() -
-                (float) position.getY() -
-                (float) draggableImage.getBoundsInParent().getHeight();
-
-        contentStream.saveGraphicsState();
-
-        Matrix transform = new Matrix();
-        transform.translate((float) position.getX(), pdfY);
-
-        contentStream.transform(transform);
-
-        contentStream.drawImage(image, 0, 0,
-                (float) draggableImage.getBoundsInParent().getWidth(),
-                (float) draggableImage.getBoundsInParent().getHeight());
-
-        contentStream.restoreGraphicsState();
-    }
-
-    private void showError(String title, String header, String content) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle(title);
-        alert.setHeaderText(header);
-        alert.setContentText(content);
-        alert.showAndWait();
-    }
-
     @Override
     public void start(Stage primaryStage) {
         Scene scene = new Scene(root, 1024, 768);
+        scene.setOnKeyPressed(event -> {
+            if (event.getCode() == KeyCode.DELETE && selectedImage != null) {
+                images.remove(selectedImage);
+                pageCanvas.getChildren().remove(selectedImage);
+                selectedImage = null;
+                arrangeImages();
+            }
+        });
+
         primaryStage.setTitle("Interactive PDF Editor");
         primaryStage.setScene(scene);
         primaryStage.show();
