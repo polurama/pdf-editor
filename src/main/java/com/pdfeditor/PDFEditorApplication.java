@@ -9,6 +9,7 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
+import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -21,6 +22,7 @@ import org.apache.pdfbox.util.Matrix;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class PDFEditorApplication extends Application {
@@ -55,10 +57,13 @@ public class PDFEditorApplication extends Application {
         Button addImageButton = new Button("Add Image");
         addImageButton.setOnAction(e -> handleAddImage());
 
+        Button addFolderButton = new Button("Add Folder");
+        addFolderButton.setOnAction(e -> handleAddFolder());
+
         Button saveButton = new Button("Save PDF");
         saveButton.setOnAction(e -> handleSavePDF());
 
-        toolbar.getChildren().addAll(addImageButton, saveButton);
+        toolbar.getChildren().addAll(addImageButton, addFolderButton, saveButton);
         root.setTop(toolbar);
     }
 
@@ -69,15 +74,38 @@ public class PDFEditorApplication extends Application {
 
         File file = fileChooser.showOpenDialog(root.getScene().getWindow());
         if (file != null) {
-            try {
-                DraggableImage image = new DraggableImage(file);
-                images.add(image);
-                pageCanvas.getChildren().add(image);
-            } catch (Exception e) {
-                showError("Error Adding Image",
-                        "Failed to add image: " + file.getName(),
-                        e.getMessage());
+            addImageToCanvas(file);
+        }
+    }
+
+    private void handleAddFolder() {
+        DirectoryChooser directoryChooser = new DirectoryChooser();
+        directoryChooser.setTitle("Select Image Folder");
+
+        File folder = directoryChooser.showDialog(root.getScene().getWindow());
+        if (folder != null && folder.isDirectory()) {
+            File[] files = folder.listFiles((dir, name) -> name.toLowerCase().endsWith(".png") ||
+                    name.toLowerCase().endsWith(".jpg") ||
+                    name.toLowerCase().endsWith(".jpeg"));
+
+            if (files != null) {
+                Arrays.sort(files); // Ensure consistent order
+                for (File file : files) {
+                    addImageToCanvas(file);
+                }
             }
+        }
+    }
+
+    private void addImageToCanvas(File file) {
+        try {
+            DraggableImage image = new DraggableImage(file);
+            images.add(image);
+            pageCanvas.getChildren().add(image);
+        } catch (Exception e) {
+            showError("Error Adding Image",
+                    "Failed to add image: " + file.getName(),
+                    e.getMessage());
         }
     }
 
@@ -119,20 +147,15 @@ public class PDFEditorApplication extends Application {
         PDImageXObject image = PDImageXObject.createFromFile(
                 draggableImage.getSourceFile().getAbsolutePath(), document);
 
-        // Convert JavaFX coordinates to PDF coordinates
         float pdfY = PDRectangle.A4.getHeight() -
                 (float) position.getY() -
                 (float) draggableImage.getBoundsInParent().getHeight();
 
-        // Save the graphics state before applying transformations
         contentStream.saveGraphicsState();
 
-        // Create and apply transformation matrix for position and rotation
         Matrix transform = new Matrix();
-        // First translate
         transform.translate((float) position.getX(), pdfY);
 
-        // Then rotate around image center if needed
         if (draggableImage.getRotate() != 0) {
             float centerX = (float) draggableImage.getBoundsInParent().getWidth() / 2;
             float centerY = (float) draggableImage.getBoundsInParent().getHeight() / 2;
@@ -143,12 +166,10 @@ public class PDFEditorApplication extends Application {
 
         contentStream.transform(transform);
 
-        // Draw the image at the transformed position
         contentStream.drawImage(image, 0, 0,
                 (float) draggableImage.getBoundsInParent().getWidth(),
                 (float) draggableImage.getBoundsInParent().getHeight());
 
-        // Restore the graphics state
         contentStream.restoreGraphicsState();
     }
 
