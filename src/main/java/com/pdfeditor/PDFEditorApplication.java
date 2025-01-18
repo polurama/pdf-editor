@@ -30,6 +30,9 @@ public class PDFEditorApplication extends Application {
     private final BorderPane root;
     private final List<DraggableImage> images = new ArrayList<>();
 
+    private static final double IMAGE_SPACING = 10; // Space between images
+    private static final int IMAGES_PER_ROW = 4; // Number of images per row
+
     public PDFEditorApplication() {
         root = new BorderPane();
         pageCanvas = new Pane();
@@ -75,6 +78,7 @@ public class PDFEditorApplication extends Application {
         File file = fileChooser.showOpenDialog(root.getScene().getWindow());
         if (file != null) {
             addImageToCanvas(file);
+            arrangeImages(); // Reposition images after adding a new one
         }
     }
 
@@ -89,10 +93,11 @@ public class PDFEditorApplication extends Application {
                     name.toLowerCase().endsWith(".jpeg"));
 
             if (files != null) {
-                Arrays.sort(files); // Ensure consistent order
+                Arrays.sort(files);
                 for (File file : files) {
                     addImageToCanvas(file);
                 }
+                arrangeImages(); // Automatically arrange after loading multiple images
             }
         }
     }
@@ -106,6 +111,25 @@ public class PDFEditorApplication extends Application {
             showError("Error Adding Image",
                     "Failed to add image: " + file.getName(),
                     e.getMessage());
+        }
+    }
+
+    private void arrangeImages() {
+        double x = IMAGE_SPACING;
+        double y = IMAGE_SPACING;
+        int count = 0;
+
+        for (DraggableImage image : images) {
+            image.setTranslateX(x);
+            image.setTranslateY(y);
+
+            x += image.getFitWidth() + IMAGE_SPACING; // Move to the right
+
+            count++;
+            if (count % IMAGES_PER_ROW == 0) {
+                x = IMAGE_SPACING; // Reset X to the beginning
+                y += 220; // Move to the next row (assumed average image height + margin)
+            }
         }
     }
 
@@ -155,14 +179,6 @@ public class PDFEditorApplication extends Application {
 
         Matrix transform = new Matrix();
         transform.translate((float) position.getX(), pdfY);
-
-        if (draggableImage.getRotate() != 0) {
-            float centerX = (float) draggableImage.getBoundsInParent().getWidth() / 2;
-            float centerY = (float) draggableImage.getBoundsInParent().getHeight() / 2;
-            transform.translate(centerX, centerY);
-            transform.rotate(Math.toRadians(draggableImage.getRotate()));
-            transform.translate(-centerX, -centerY);
-        }
 
         contentStream.transform(transform);
 
